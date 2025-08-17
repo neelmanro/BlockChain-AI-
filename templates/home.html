@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BlockSense AI — Real-Time Web3 Risk Monitor</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    html,body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,"Apple Color Emoji","Segoe UI Emoji";}
+    .glass{backdrop-filter:saturate(1.2) blur(8px); background:rgba(255,255,255,.7)}
+    .scrollbar-thin::-webkit-scrollbar{height:8px;width:8px}
+    .scrollbar-thin::-webkit-scrollbar-thumb{background:#e2e8f0;border-radius:8px}
+    .badge{font-size:11px;border-radius:9999px;padding:.25rem .6rem;display:inline-block}
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50 text-slate-900">
+
+
+  <header class="sticky top-0 z-40 border-b bg-white/80 backdrop-blur">
+    <div class="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-xl bg-indigo-600 text-white grid place-content-center font-extrabold">B</div>
+        <div>
+          <h1 class="text-lg font-extrabold tracking-tight">BlockSense AI</h1>
+          <p class="text-xs text-slate-500 -mt-0.5">Real-time cross-chain transaction intelligence</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="liveBadge" class="badge bg-emerald-100 text-emerald-700">Live</span>
+        <span class="badge bg-indigo-100 text-indigo-800">Checked by Chainlink</span>
+        <span class="badge bg-blue-100 text-blue-800">Indexed via The Graph</span>
+        <span class="badge bg-cyan-100 text-cyan-800">Stablecoin Mode</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-6 space-y-6">
+
+
+    <section class="glass rounded-2xl border p-4">
+      <form id="filters" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end" onsubmit="event.preventDefault();">
+        <div>
+          <label class="text-xs text-slate-500">Chain</label>
+          <select id="f-chain" class="mt-1 w-full rounded-xl border p-2">
+            <option value="all">All</option>
+            <option>Ethereum</option>
+            <option>Polygon</option>
+            <option>Arbitrum</option>
+            <option>Avalanche</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-slate-500">Min Amount (USD)</label>
+          <input id="f-minusd" type="number" min="0" placeholder="0" class="mt-1 w-full rounded-xl border p-2"/>
+        </div>
+        <div class="md:col-span-2">
+          <label class="text-xs text-slate-500">Search (hash / address)</label>
+          <input id="f-q" type="text" placeholder="0x…" class="mt-1 w-full rounded-xl border p-2"/>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="inline-flex items-center gap-2 text-sm">
+            <input id="f-flagged" type="checkbox" value="1"/>
+            Show only flagged
+          </label>
+          <button id="btn-apply" class="ml-auto rounded-xl border px-3 py-2 hover:bg-slate-50 text-sm">Apply</button>
+        </div>
+      </form>
+    </section>
+
+
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div class="glass rounded-2xl border p-4">
+        <div class="text-xs text-slate-500">Throughput</div>
+        <div id="stat-tps" class="text-2xl font-semibold">0.0 tx/s</div>
+        <div class="text-[11px] text-slate-500">5s window</div>
+      </div>
+      <div class="glass rounded-2xl border p-4">
+        <div class="text-xs text-slate-500">Avg Latency</div>
+        <div id="stat-lat" class="text-2xl font-semibold">0 ms</div>
+        <div class="text-[11px] text-slate-500">ingest → insight</div>
+      </div>
+      <div class="glass rounded-2xl border p-4">
+        <div class="text-xs text-slate-500">Flagged</div>
+        <div id="stat-flagged" class="text-2xl font-semibold">0</div>
+        <div class="text-[11px] text-slate-500">current feed</div>
+      </div>
+      <div class="glass rounded-2xl border p-4">
+        <div class="text-xs text-slate-500">Events Cached</div>
+        <div id="stat-total" class="text-2xl font-semibold">0</div>
+        <div class="text-[11px] text-slate-500">recent window</div>
+      </div>
+    </section>
+
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2 glass rounded-2xl border overflow-hidden">
+        <div class="px-4 py-3 border-b flex items-center justify-between">
+          <div class="font-semibold">Live Transactions</div>
+          <div class="text-xs text-slate-500">Newest first • Click a row</div>
+        </div>
+        <div class="max-h-[560px] overflow-auto scrollbar-thin">
+          <table class="w-full text-sm">
+            <thead class="sticky top-0 bg-white">
+              <tr class="text-left text-slate-500">
+                <th class="px-4 py-2">Hash</th>
+                <th class="px-4 py-2">Chain</th>
+                <th class="px-4 py-2">From → To</th>
+                <th class="px-4 py-2 text-right">USD</th>
+                <th class="px-4 py-2 text-right">Latency</th>
+                <th class="px-4 py-2 text-right">Risk</th>
+                <th class="px-4 py-2"></th>
+              </tr>
+            </thead>
+            <tbody id="rows"><tr><td colspan="7" class="px-4 py-6 text-center text-slate-500">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+
+      <aside class="glass rounded-2xl border p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="font-semibold">AI Insight</div>
+          <span id="d-badge" class="badge bg-slate-100 text-slate-700">—</span>
+        </div>
+
+        <p id="d-summary" class="text-sm text-slate-700 mb-3">Select a transaction to view details.</p>
+
+        <div class="text-[12px] text-slate-500 mb-1">Details</div>
+        <div class="space-y-1 text-sm">
+          <div class="flex justify-between"><span class="text-slate-500">Hash</span><span id="d-hash" class="font-mono">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">Chain</span><span id="d-chain">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">From</span><span id="d-from" class="font-mono">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">To</span><span id="d-to" class="font-mono">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">Amount (USD)</span><span id="d-usd">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">Latency</span><span id="d-lat">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">Flagged</span><span id="d-flag">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">Risk</span><span id="d-risk">—</span></div>
+
+          <div class="flex justify-between"><span class="text-slate-500">Chainlink</span><span id="d-cl">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">The Graph</span><span id="d-tg">—</span></div>
+          <div class="flex justify-between"><span class="text-slate-500">Stablecoin Mode</span><span id="d-st">—</span></div>
+        </div>
+
+      
+
+    <footer class="pt-2 text-center text-[12px] text-slate-500">
+      Built for ETHGlobal — price checks via Chainlink, indexing via The Graph, and Stablecoin mode for compliance.
+    </footer>
+  </main>
+
+  <script>
+    const rowsEl = document.getElementById('rows');
+    const sTps = document.getElementById('stat-tps');
+    const sLat = document.getElementById('stat-lat');
+    const sFlag = document.getElementById('stat-flagged');
+    const sTot = document.getElementById('stat-total');
+
+    const fChain = document.getElementById('f-chain');
+    const fMin = document.getElementById('f-minusd');
+    const fQ = document.getElementById('f-q');
+    const fOnly = document.getElementById('f-flagged');
+    document.getElementById('btn-apply').addEventListener('click', () => { loadOnce(); });
+
+    function fmtUSD(n){ try{ return "$" + Number(n).toLocaleString(); }catch{ return "$" + n; } }
+    function riskBadge(r){
+      if(r>=85) return '<span class="badge bg-red-100 text-red-700">'+r+'</span>';
+      if(r>=70) return '<span class="badge bg-amber-100 text-amber-700">'+r+'</span>';
+      return '<span class="badge bg-emerald-100 text-emerald-700">'+r+'</span>';
+    }
+    function okBadge(flag){ return flag ? '<span class="badge bg-red-100 text-red-700">Flag</span>' : '<span class="badge bg-emerald-100 text-emerald-700">OK</span>'; }
+
+    async function loadOnce(){
+      const params = new URLSearchParams();
+      if(fChain.value && fChain.value!=="all") params.set('chain', fChain.value);
+      if(fMin.value) params.set('min_usd', fMin.value);
+      if(fQ.value) params.set('q', fQ.value);
+      if(fOnly.checked) params.set('only_flagged', '1');
+
+      const res = await fetch('/api/stream?'+params.toString());
+      const data = await res.json();
+
+      sTps.textContent = `${data.stats.tps} tx/s`;
+      sLat.textContent = `${data.stats.avg_latency} ms`;
+      sFlag.textContent = data.stats.flagged;
+      sTot.textContent = data.stats.total;
+
+      if(!data.txs.length){
+        rowsEl.innerHTML = '<tr><td colspan="7" class="px-4 py-6 text-center text-slate-500">No transactions yet.</td></tr>';
+        return;
+      }
+      rowsEl.innerHTML = data.txs.map(tx => `
+        <tr class="border-t hover:bg-slate-50 cursor-pointer" onclick='selectTx(${JSON.stringify(tx)})'>
+          <td class="px-4 py-2 font-mono text-xs">${tx.hash.slice(0,12)}…</td>
+          <td class="px-4 py-2"><span class="badge bg-slate-100 text-slate-800">${tx.chain}</span></td>
+          <td class="px-4 py-2 font-mono text-xs">${tx.addr_from.slice(0,10)}… → ${tx.addr_to.slice(0,10)}…</td>
+          <td class="px-4 py-2 text-right">${fmtUSD(tx.usd)}</td>
+          <td class="px-4 py-2 text-right">${tx.latency} ms</td>
+          <td class="px-4 py-2 text-right">${riskBadge(tx.risk)}</td>
+          <td class="px-4 py-2">${okBadge(tx.flagged)}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function sponsorCheck(tx) {
+      try {
+        const res = await fetch('/api/sponsor-check', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(tx)
+        });
+        const ok = await res.json();
+        document.getElementById('d-cl').textContent = ok.chainlink_ok ? '✓' : '✗';
+        document.getElementById('d-tg').textContent = ok.thegraph_ok ? '✓' : '✗';
+        document.getElementById('d-st').textContent = ok.stablecoin_mode ? '✓' : '✗';
+      } catch {
+        document.getElementById('d-cl').textContent = '—';
+        document.getElementById('d-tg').textContent = '—';
+        document.getElementById('d-st').textContent = '—';
+      }
+    }
+
+    function setRiskBadge(risk){
+      const badge = document.getElementById('d-badge');
+      if(risk>=85){ badge.className="badge bg-red-100 text-red-700"; badge.textContent="High"; }
+      else if(risk>=70){ badge.className="badge bg-amber-100 text-amber-700"; badge.textContent="Medium"; }
+      else { badge.className="badge bg-emerald-100 text-emerald-700"; badge.textContent="Low"; }
+    }
+
+    async function selectTx(tx){
+      document.getElementById('d-hash').textContent = tx.hash.slice(0,18) + "…";
+      document.getElementById('d-chain').textContent = tx.chain;
+      document.getElementById('d-from').textContent = tx.addr_from.slice(0,16) + "…";
+      document.getElementById('d-to').textContent = tx.addr_to.slice(0,16) + "…";
+      document.getElementById('d-usd').textContent = fmtUSD(tx.usd);
+      document.getElementById('d-lat').textContent = `${tx.latency} ms`;
+      document.getElementById('d-flag').textContent = tx.flagged ? "Yes" : "No";
+      document.getElementById('d-risk').textContent = `${tx.risk}/100`;
+      document.getElementById('d-summary').textContent = tx.ai_summary || "Summary will appear here.";
+      setRiskBadge(tx.risk);
+      sponsorCheck(tx);
+    }
+
+    loadOnce();
+    setInterval(loadOnce, 2000);
+    window.selectTx = selectTx;
+  </script>
+</body>
+</html>
