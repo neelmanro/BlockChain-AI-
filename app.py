@@ -6,7 +6,7 @@ from flask import Flask, render_template, jsonify, request
 
 
 
-# --- Optional OpenAI (used for one-line summaries; safe fallback if no key)
+
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 try:
     from openai import OpenAI
@@ -14,16 +14,15 @@ try:
 except Exception:
     oai_client = None
 
-# --- Optional Chainlink via Web3 for price enrichment
-ETH_RPC_URL = os.getenv("ETH_RPC_URL", "")  # Alchemy/Infura/Web3 RPC URL with mainnet access
-CHAINLINK_ETH_USD_FEED = os.getenv("CHAINLINK_ETH_USD_FEED", "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419")  # Mainnet ETH/USD
+
+ETH_RPC_URL = os.getenv("ETH_RPC_URL", "")  
+CHAINLINK_ETH_USD_FEED = os.getenv("CHAINLINK_ETH_USD_FEED", "0x5f4ec3df9cbd43714fe2740f5e3616155c5b8419") 
 w3 = None
 price_feed = None
 try:
     if ETH_RPC_URL:
         from web3 import Web3
         w3 = Web3(Web3.HTTPProvider(ETH_RPC_URL, request_kwargs={"timeout": 10}))
-        # Minimal ABI for AggregatorV3Interface latestRoundData()
         agg_abi = [{
             "inputs": [], "name": "latestRoundData", "outputs": [
                 {"internalType":"usint80","name":"roundId","type":"uint80"},
@@ -37,12 +36,12 @@ except Exception:
     w3 = None
     price_feed = None
 
-# --- The Graph (Uniswap v3) endpoint
+
 UNIV3_SUBGRAPH = os.getenv("UNIV3_SUBGRAPH", "https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3")
 
 app = Flask(__name__)
 
-# ---------------------------- Data Model -------------------------------------
+
 @dataclass
 class Tx:
     id: str
@@ -74,7 +73,7 @@ CHAINS = ["Ethereum", "Polygon", "Arbitrum", "Avalanche"]
 def now_ms() -> float: return time.time() * 1000
 def rand_hex(n: int) -> str: return "0x" + "".join(random.choice("0123456789abcdef") for _ in range(n))
 
-# --------------------------- Risk Heuristics ---------------------------------
+
 def is_new_wallet(addr: str, horizon_ms: int = 24*60*60*1000) -> bool:
     fs = FIRST_SEEN.get(addr)
     return fs is None or (now_ms() - fs) < horizon_ms
@@ -84,7 +83,7 @@ def score_tx(tx_from: str, tx_to: str, usd: float, ts_ms: float, token_symbol: s
     FIRST_SEEN.setdefault(tx_from, ts_ms)
     FIRST_SEEN.setdefault(tx_to, ts_ms)
 
-    # 1) Fan-out behavior (burst of unique outputs in 5 min)
+    
     w = FANOUT_WIN[tx_from]; w.append((tx_to, ts_ms, usd))
     cutoff = ts_ms - 5*60*1000
     while w and w[0][1] < cutoff: w.popleft()
@@ -95,24 +94,24 @@ def score_tx(tx_from: str, tx_to: str, usd: float, ts_ms: float, token_symbol: s
         score += int(30 + 3*fanout_count + 0.01*total_usd)
         reasons.append(f"Fan-out {fanout_count} wallets")
 
-    # 2) Ping-pong (wash-like) within 10 min
+
     EDGES.append((tx_from, tx_to, ts_ms, usd))
     reverse_hits = sum(1 for (f,t,_ts,_u) in EDGES if f == tx_to and t == tx_from and ts_ms - _ts <= 10*60*1000)
     if reverse_hits >= 3 and total_usd >= 10_000:
         score += int(40 + 10*reverse_hits + 0.005*total_usd)
         reasons.append(f"Ping-pong {reverse_hits}x")
 
-    # 3) Large transfer
+
     if usd >= 75_000:
         score += 35 + min(25, int(usd) // 50_000)
         reasons.append(f"Large amount ${int(usd):,}")
 
-    # 4) Stablecoin special casing (fast bursts can be scams/drainers)
+  
     if token_symbol in {"USDC","USDT","DAI"} and fanout_count >= 6 and avg_usd >= 200:
         score += 15
         reasons.append("Stablecoin burst")
 
-    # 5) Blocklist
+
     if tx_from in RISK_BLOCKLIST or tx_to in RISK_BLOCKLIST:
         score = max(score, 90)
         reasons.append("Known risky counterparty")
@@ -142,7 +141,6 @@ def ai_summarize(tx: Tx, reasons: list[str]) -> str:
         why = "; ".join(reasons) if reasons else "no major anomalies"
         return f"{base} Risk {tx.risk}/100 ({risk_word}); {why}."
 
-# ------------------------ Chainlink Price Helper ------------------------------
 def chainlink_eth_usd() -> Optional[float]:
     """Return ETH/USD price if Chainlink feed + RPC configured, else None."""
     try:
@@ -154,7 +152,7 @@ def chainlink_eth_usd() -> Optional[float]:
         return None
     return None
 
-# ----------------------- Real Data: The Graph (Uniswap) ----------------------
+
 def fetch_uniswap_swaps(limit: int = 20) -> list[dict]:
     """Fetch recent swaps from Uniswap v3 (Ethereum) using The Graph."""
     query = """
@@ -221,7 +219,7 @@ def append_real_batch():
         if not any(e.hash == tx.hash for e in EVENTS):
             EVENTS.appendleft(tx)
 
-# --------------------------- Mock Stream (fallback) ---------------------------
+
 def append_fake_batch():
     burst = 1 + random.randint(0, 3)
     for _ in range(burst):
@@ -251,7 +249,6 @@ def append_fake_batch():
             tx.ai_summary = ai_summarize(tx, reasons)
         EVENTS.appendleft(tx)
 
-# ----------------------------- Background Feeder ------------------------------
 def feeder_loop():
     """
     Prefer real data via The Graph; if it fails temporarily, add a small mock batch
@@ -269,7 +266,7 @@ def feeder_loop():
 
 threading.Thread(target=feeder_loop, daemon=True).start()
 
-# ------------------------------ Helpers --------------------------------------
+
 def compute_stats():
     now = now_ms()
     window_ms = 5000
@@ -290,7 +287,6 @@ def apply_filters(all_txs: List[Tx], chain: str, min_usd: float, q: str, only_fl
     if only_flagged: txs = [t for t in txs if t.flagged]
     return txs
 
-# ------------------------------- Pages & APIs --------------------------------
 @app.route("/", methods=["GET"])
 def home():
     return render_template("home.html")
@@ -325,8 +321,8 @@ def api_sponsor_check():
     data = request.get_json(force=True) or {}
     sym = (data.get("token_symbol") or "").upper()
 
-    chainlink_ok = bool(price_feed)   # we set this when ETH_RPC_URL is configured
-    thegraph_ok = True                # we are fetching from a The Graph subgraph
+    chainlink_ok = bool(price_feed)   
+    thegraph_ok = True                
     stablecoin_mode = sym in {"USDC", "USDT", "DAI"}
 
     return jsonify({
