@@ -45,7 +45,7 @@ Flagged transactions are highlighted in the dashboard, with human-readable AI su
 
 ## 📊 Example Dashboard
 - View live transactions across Ethereum (real) and Polygon/Arbitrum/Avalanche (mock).  
-- See risk ratings and flag status in real time. You could also filter out. 
+- See risk ratings and flag status in real time. You can also filter transactions based on risk score, chain, or address.
 - Click a row to inspect full transaction metadata and AI insights.  
 
 
